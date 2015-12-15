@@ -87,15 +87,15 @@ mesos:
                         var: MESOS_ADMIN]
   --mesos_slave_config_file MESOS_SLAVE_CONFIG_FILE
                         Configuration file for Mesos slaves. (default:
-                        /opt/mesosphere/etc/mesos-slave-common) [env var:
+                        /etc/default/mesos-slave) [env var:
                         MESOS_SLAVE_CONFIG_FILE]
   --mesos_public_slave_service_name MESOS_PUBLIC_SLAVE_SERVICE_NAME
-                        Name of Mesos public slave service. (default: dcos-
-                        mesos-slave-public.service) [env var:
+                        Name of Mesos public slave service. TODO: Determine
+                        default. (default: ????) [env var:
                         MESOS_PUBLIC_SLAVE_SERVICE_NAME]
   --mesos_private_slave_service_name MESOS_PRIVATE_SLAVE_SERVICE_NAME
-                        Name of Mesos private slave service. (default: dcos-
-                        mesos-slave.service) [env var:
+                        Name of Mesos private slave service. TODO: Determine
+                        default. (default: ????) [env var:
                         MESOS_PRIVATE_SLAVE_SERVICE_NAME]
 
 weave:
