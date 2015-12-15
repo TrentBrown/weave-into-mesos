@@ -1,0 +1,41 @@
+#========================================================================
+[Unit]
+
+# Description
+Description=Weave Proxy
+Documentation=http://docs.weave.works/
+
+# Needs Docker service
+Requires=docker.service
+After=docker.service
+
+# Needs Weave router service
+Requires=weave-router.service
+After=weave-router.service
+
+
+#========================================================================
+[Service]
+
+# Settings
+TimeoutStartSec=0
+
+# Environment
+EnvironmentFile=-/etc/weave.env
+EnvironmentFile=-/etc/weave.%H.env
+
+# Start
+ExecStartPre={{BIN_DIR}}/weave launch-proxy --with-dns
+ExecStart=/usr/bin/docker attach weaveproxy
+
+# Stop
+ExecStop={{BIN_DIR}}/weave stop-proxy
+
+# Restart
+Restart=on-failure
+
+
+#========================================================================
+[Install]
+
+WantedBy=weave.target

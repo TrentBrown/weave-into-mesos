@@ -1,0 +1,37 @@
+#========================================================================
+[Unit]
+
+# Description
+Description=Weave Router
+Documentation=http://docs.weave.works/
+
+# Needs Docker service
+Requires=docker.service
+After=docker.service
+
+
+#========================================================================
+[Service]
+
+# Settings
+TimeoutStartSec=0
+
+# Environment
+EnvironmentFile=-/etc/weave.env
+EnvironmentFile=-/etc/weave.%H.env
+
+# Start
+ExecStartPre={{BIN_DIR}}/weave launch-router --ipalloc-range {{IPALLOC_RANGE}} {{PEERS}}
+ExecStart=/usr/bin/docker attach weave
+
+# Stop
+ExecStop={{BIN_DIR}}/weave stop-router
+
+# Restart
+Restart=on-failure
+
+
+#========================================================================
+[Install]
+
+WantedBy=weave.target

@@ -1,0 +1,21 @@
+#========================================================================
+[Unit]
+
+# Description
+Description=Weave
+Documentation=man:systemd.special(7)
+
+# Settings
+RefuseManualStart=no
+
+# Needs the network to be up
+After=network-online.target
+
+# Needs Weave router and proxy services
+Requires=weave-router.service weave-proxy.service
+
+
+#========================================================================
+
+[Install]
+WantedBy=multi-user.target
