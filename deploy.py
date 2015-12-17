@@ -263,7 +263,7 @@ class Deployer:
         self.execute(slave, "sudo systemctl start weave-proxy.service")
         
         # Install weave proxy socket
-        if env.mesos_hack:
+        if self.args.mesos_hack:
             
             # In older versions of Mesos and DCOS, the MESOS_DOCKER_SOCKET variable does not get picked up, so we must add the
             # socket proxy directly to the command line where the slave is started by the service.
@@ -271,7 +271,7 @@ class Deployer:
             #       ExecStart=/opt/mesosphere/packages/mesos--d43a8eb9946a5c1c5ec05fb21922a2fdf41775b2/sbin/mesos-slave
             # Sample line for vanilla Mesos:
             #       <add example>
-            self.execute(host, "sudo sed -i 's/^ExecStart(.*)mesos-slave$/ExecStart\1mesos-slave --docker_socket = {}' {}".format(arg.weave_proxy_socket, file)
+            self.execute(slave, "sudo sed -i 's/^ExecStart(.*)mesos-slave$/ExecStart\1mesos-slave --docker_socket = {}' {}".format(self.args.weave_proxy_socket, self.args.mesos_slave_service_file_public))
         
         else:
             
