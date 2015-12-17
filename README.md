@@ -1,6 +1,8 @@
 Weave-into-Mesos
 ================
 
+## TODO: Explain that the targets are idempotent. Have alternative lines in Makefile for DCOS vs. vanilla Mesos?
+
 This project is an attempt to integrate [Weave](http://weave.works/) into [Mesos](http://mesos.apache.org/). It would like to be flexible enough to work with a variety of Mesos installations, but is being tested first against a [DCOS](https://mesosphere.com/product/) Mesos cluster.
 
 __NOTA BENE__: At the moment, the project is non-functional, as there is one missing piece in the puzzle: Configuring Mesos (DCOS) to use the Weave Proxy Docker socket (_/var/run/weave/weave.sock_) instead of the default (_var/run/docker.sock_). It seems that the normal thing to do is to add this line:
@@ -60,8 +62,8 @@ usage: deploy.py [-h]
                  [--mesos-private-slaves [MESOS_PRIVATE_SLAVES [MESOS_PRIVATE_SLAVES ...]]]
                  [--mesos_admin MESOS_ADMIN]
                  [--mesos_slave_config_file MESOS_SLAVE_CONFIG_FILE]
-                 [--mesos_public_slave_service_name MESOS_PUBLIC_SLAVE_SERVICE_NAME]
-                 [--mesos_private_slave_service_name MESOS_PRIVATE_SLAVE_SERVICE_NAME]
+                 [--mesos_slave_service_name_public MESOS_SLAVE_SERVICE_NAME_PUBLIC]
+                 [--mesos_slave_service_name_private MESOS_SLAVE_SERVICE_NAME_PRIVATE]
                  [--weave-install-dir WEAVE_INSTALL_DIR]
                  [--weave-router-ipalloc-range WEAVE_ROUTER_IPALLOC_RANGE]
                  [--weave-proxy-socket WEAVE_PROXY_SOCKET]
@@ -89,14 +91,14 @@ mesos:
                         Configuration file for Mesos slaves. (default:
                         /etc/default/mesos-slave) [env var:
                         MESOS_SLAVE_CONFIG_FILE]
-  --mesos_public_slave_service_name MESOS_PUBLIC_SLAVE_SERVICE_NAME
+  --mesos_slave_service_name_public MESOS_SLAVE_SERVICE_NAME_PUBLIC
                         Name of Mesos public slave service. TODO: Determine
                         default. (default: ????) [env var:
-                        MESOS_PUBLIC_SLAVE_SERVICE_NAME]
-  --mesos_private_slave_service_name MESOS_PRIVATE_SLAVE_SERVICE_NAME
+                        MESOS_SLAVE_SERVICE_NAME_PUBLIC]
+  --mesos_slave_service_name_private MESOS_SLAVE_SERVICE_NAME_PRIVATE
                         Name of Mesos private slave service. TODO: Determine
                         default. (default: ????) [env var:
-                        MESOS_PRIVATE_SLAVE_SERVICE_NAME]
+                        MESOS_SLAVE_SERVICE_NAME_PRIVATE]
 
 weave:
   Weave

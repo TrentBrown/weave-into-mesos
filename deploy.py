@@ -57,7 +57,7 @@ class Deployer:
 
         mesos_group = self.parser.add_argument_group('mesos', 'Mesos')
 
-        # Mesos public slaves
+        # Nodes
         mesos_group.add_argument(
             "--mesos-public-slaves",
             dest="mesos_public_slaves",
@@ -66,8 +66,6 @@ class Deployer:
             type=str,
             help="Space-separated list of public Mesos slave nodes names"
         )
-
-        # Mesos private slaves
         mesos_group.add_argument(
             "--mesos-private-slaves",
             dest="mesos_private_slaves",
@@ -77,40 +75,64 @@ class Deployer:
             help="Space-separated list of private Mesos slave nodes names"
         )
 
-        # Mesos slave admin username
+        # Admin username
         mesos_group.add_argument(
-            "--mesos_admin",
+            "--mesos-admin",
             dest="mesos_admin",
             env_var='MESOS_ADMIN',
             default="core",
             help="Admin username for Mesos nodes. (default: '%(default)s')"
         )
 
-        # Mesos slave configuration file
+        # Configuration file
         mesos_group.add_argument(
-            "--mesos_slave_config_file",
+            "--mesos-slave-config-file",
             dest="mesos_slave_config_file",
             env_var='MESOS_SLAVE_CONFIG_FILE',
             default="/etc/default/mesos-slave",
             help="Configuration file for Mesos slaves. (default: %(default)s)"
         )
 
-        # Mesos public slave service name
+        # Service files
         mesos_group.add_argument(
-            "--mesos_public_slave_service_name",
-            dest="mesos_public_slave_service_name",
-            env_var='MESOS_PUBLIC_SLAVE_SERVICE_NAME',
+            "--mesos-slave-service-file-public",
+            dest="mesos_slave_service_file_public",
+            env_var='MESOS_SLAVE_SERVICE_FILE_PUBLIC',
+            default="????",  # TODO: Find what a vanilla Mesos install uses
+            help="Public slave service file. TODO: Determine default. (default: %(default)s)"
+        )
+        mesos_group.add_argument(
+            "--mesos-slave-service-file-private",
+            dest="mesos_slave_service_file_private",
+            env_var='MESOS_SLAVE_SERVICE_FILE_PRIVATE',
+            default="????",  # TODO: Find what a vanilla Mesos install uses
+            help="Private slave service file. TODO: Determine default. (default: %(default)s)"
+        )
+
+        # Service names
+        mesos_group.add_argument(
+            "--mesos-slave-service-name-public",
+            dest="mesos_slave_service_name_public",
+            env_var='MESOS_SLAVE_SERVICE_NAME_PUBLIC',
             default="????",  # TODO: Find what a vanilla Mesos install uses
             help="Name of Mesos public slave service. TODO: Determine default. (default: %(default)s)"
         )
-
-        # Mesos private slave service name
         mesos_group.add_argument(
-            "--mesos_private_slave_service_name",
-            dest="mesos_private_slave_service_name",
-            env_var='MESOS_PRIVATE_SLAVE_SERVICE_NAME',
+            "--mesos-slave-service-name-private",
+            dest="mesos_slave_service_name_private",
+            env_var='MESOS_SLAVE_SERVICE_NAME_PRIVATE',
             default="????",  # TODO: Find what a vanilla Mesos install uses
             help="Name of Mesos private slave service. TODO: Determine default. (default: %(default)s)"
+        )
+
+        # Hack
+        mesos_group.add_argument(
+            "--mesos-hack",
+            dest="mesos_hack",
+            env_var='MESOS_HACK',
+            action='store_true',
+            default=False,
+            help="HACK. (default: %(default)s)"
         )
 
 
@@ -118,7 +140,7 @@ class Deployer:
 
         weave_group = self.parser.add_argument_group('weave', 'Weave')
 
-        # Weave installation directory
+        # Installation directory
         weave_group.add_argument(
             "--weave-install-dir",
             dest="weave_install_dir",
@@ -127,7 +149,7 @@ class Deployer:
             help="The directory in which to install Weave. Must be on a writable volume. (default: /home/<mesos_admin>)"
         )
 
-        # Weave components
+        # Components
         self.add_weave_router_arguments()
         self.add_weave_proxy_arguments()
 
@@ -136,7 +158,7 @@ class Deployer:
 
         weave_router_group = self.parser.add_argument_group('weave-router', 'Weave Router')
 
-        # Weave router IP number allocation range
+        # IP number allocation range
         weave_router_group.add_argument(
             "--weave-router-ipalloc-range",
             dest="weave_router_ipalloc_range",
@@ -146,7 +168,7 @@ class Deployer:
         )
 
         # TODO: Figure out how to specify this
-        # Weave DNS domain
+        # DNS domain
         # weave_router_group.add_argument(
         #     "--weave-dns-domain",
         #     dest="weave_dns_domain",
@@ -160,7 +182,7 @@ class Deployer:
 
         weave_proxy_group = self.parser.add_argument_group('weave-proxy', 'Weave Proxy')
 
-        # Weave proxy socket path
+        # Docker socket path
         weave_proxy_group.add_argument(
             "--weave-proxy-socket",
             dest="weave_proxy_socket",
@@ -185,15 +207,14 @@ class Deployer:
 
         self.weave_bin_dir = self.args.weave_install_dir + "/bin"
         self.weave_tmp_dir = self.args.weave_install_dir + "/tmp"
-
+        
+        # Build parameter substitution maps
         weave_router_peers = ' '.join(self.args.mesos_private_slaves + self.args.mesos_public_slaves)
-
         self.weave_router_substitutions = [
             {'pattern': '{{BIN_DIR}}', 'replacement': self.weave_bin_dir},
             {'pattern': '{{PEERS}}', 'replacement': weave_router_peers},
             {'pattern': '{{IPALLOC_RANGE}}', 'replacement': self.args.weave_router_ipalloc_range}
         ]
-
         self.weave_proxy_substitutions = [
             {'pattern': '{{BIN_DIR}}', 'replacement': self.weave_bin_dir}
         ]
@@ -213,7 +234,7 @@ class Deployer:
     def deploy_slave(self, slave, is_public=False):
 
         print "------------------------------------------------------------------"
-        print "Installing Weave onto Mesos slave: " + slave
+        print "Installing Weave into Mesos slave: " + slave
 
         # Make sure target directories exist
         self.execute(slave, "sudo install -d " + self.weave_tmp_dir)
@@ -240,29 +261,32 @@ class Deployer:
         self.execute(slave, "sudo systemctl start weave-router.service")
         self.execute(slave, "sudo systemctl stop weave-proxy.service")
         self.execute(slave, "sudo systemctl start weave-proxy.service")
-
-        # Change the Mesos slave configuration to use the Weave Docker Engine socket proxy
-        # TODO: Nothing attempted below has worked. Need help with this.
-        # line = "MESOS_DOCKER_SOCKET=" + self.args.weave_proxy_socket
-        # file = self.args.mesos_slave_config_file
-        # self.add_line_to_file(slave, line, file)
-        # self.add_line_to_file(slave, line, "/opt/mesosphere/etc/mesos-slave-common")
-        # self.add_line_to_file(slave, line, "/opt/mesosphere/etc/mesos-slave")
-        # self.add_line_to_file(slave, line, "/opt/mesosphere/etc/mesos-slave-public")
-        # self.add_line_to_file(slave, line, "/etc/default/mesos-slave")
-
-        # self.execute(slave, "sudo install -d " + "/etc/systemd/system/mesos-slave.service.d")
-        # self.add_line_to_file(slave, line, "[Service]")
-        # self.add_line_to_file(slave, line, "/etc/systemd/system/mesos-slave.service.d/mesos-slave-containerizers.conf")
-
+        
+        # Install weave proxy socket
+        if env.mesos_hack:
+            
+            # In older versions of Mesos and DCOS, the MESOS_DOCKER_SOCKET variable does not get picked up, so we must add the
+            # socket proxy directly to the command line where the slave is started by the service.
+            # Sample line for DCOS:
+            #       ExecStart=/opt/mesosphere/packages/mesos--d43a8eb9946a5c1c5ec05fb21922a2fdf41775b2/sbin/mesos-slave
+            # Sample line for vanilla Mesos:
+            #       <add example>
+            self.execute(host, "sudo sed -i 's/^ExecStart(.*)mesos-slave$/ExecStart\1mesos-slave --docker_socket = {}' {}".format(arg.weave_proxy_socket, file)
+        
+        else:
+            
+            # Add the MESOS_DOCKER_SOCKET option to the slave configuration file
+            line = "MESOS_DOCKER_SOCKET=" + self.args.weave_proxy_socket
+            file = self.args.mesos_slave_config_file
+            self.add_line_to_file(slave, line, file)
+        
         # Restart the Mesos slave so it picks up the new configuration
         # if is_public:
-        #     service_name = self.args.mesos_public_slave_service_name
+        #     service_name = self.args.mesos_slave_service_name_public
         # else:
-        #     service_name = self.args.mesos_private_slave_service_name
+        #     service_name = self.args.mesos_slave_service_name_private
         # self.execute(slave, "sudo systemctl daemon-reload")
         # self.execute(slave, "sudo systemctl stop " + service_name)
-        # time.sleep(5)
         # self.execute(slave, "sudo systemctl start " + service_name)
 
 
@@ -281,6 +305,7 @@ class Deployer:
         if do_substitute:
             os.remove(substituted_file)
 
+
     def substitute(self, file, substitutions, substituted_file):
         with open(file, "r") as source:
             content = source.read()
@@ -292,10 +317,12 @@ class Deployer:
             sink.write(content)
         return substituted_file
 
+
     def execute(self, host, command):
         admin_at_host = self.args.mesos_admin + "@" + host
         print "ssh " + admin_at_host + " " + command
         subprocess.call(["ssh", admin_at_host, command])
+
 
     def add_line_to_file(self, host, line, file):
         self.execute(host, "sudo touch " + file)
