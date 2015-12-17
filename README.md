@@ -1,8 +1,6 @@
 Weave-into-Mesos
 ================
 
-## TODO: Explain that the targets are idempotent. Have alternative lines in Makefile for DCOS vs. vanilla Mesos?
-
 This project is an attempt to integrate [Weave](http://weave.works/) into [Mesos](http://mesos.apache.org/). It would like to be flexible enough to work with a variety of Mesos installations, but is being tested first against a [DCOS](https://mesosphere.com/product/) Mesos cluster.
 
 __NOTA BENE__: At the moment, the project is non-functional, as there is one missing piece in the puzzle: Configuring Mesos (DCOS) to use the Weave Proxy Docker socket (_/var/run/weave/weave.sock_) instead of the default (_var/run/docker.sock_). It seems that the normal thing to do is to add this line:
