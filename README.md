@@ -23,7 +23,7 @@ but adding the configuration line there does not work. Any help with figuring th
 - A shell dev environment with the usual set tools ("make", "curl", etc).
 - Python 2.7 installed.
 - PIP installed.
-- An existing Mesos cluster running on CentOS7-based instances.
+- An existing Mesos cluster running on instances with systemd (not the older init.d system).
 
 ### Usage
 
@@ -41,15 +41,16 @@ To set up the local environment and then do a deploy, use:
 
     make
 
-After you've done this once, subsequent deploys can be done with:
+After you've done this once, subsequent installation runs can be done with:
 
-    make deploy
+    make install
 
 ### TODO
 
 - Fix problem with setting the Docker proxy socket.
 - Add the remaining configuration options to the deployment target.
 - Test against a vanilla (non-DCOS) Mesos installation.
+- Automated tests
 
 ### Output from _make help_:
 
