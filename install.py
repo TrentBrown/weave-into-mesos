@@ -326,7 +326,7 @@ class Installer:
         if self.mesos_version < StrictVersion("0.25.0"):
 
             # Older versions of Mesos seem to pick up neither the MESOS_DOCKER_SOCKET option, nor mesos-slave --docker_host,
-            # or --docker-socket command-line options. The following *does* work
+            # or --docker-socket command-line options. The following *does* work.
 
             if (self.args.flavor is Installer.FLAVOR_VANILLA):
                 slave_executor_env_file = "TBD"

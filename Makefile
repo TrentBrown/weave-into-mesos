@@ -25,7 +25,7 @@ WEAVE_ROUTER_IPALLOC_RANGE = 10.20.0.0/16  # 10.20.0.0 --> 10.20.255.255
 #==========================================================
 
 help:
-	python deploy.py --help
+	python install.py --help
 
 local-install-python-packages:
 	pip install -r requirements.txt
@@ -37,7 +37,7 @@ local-download-weave-executable:
 local-setup: local-install-python-packages local-download-weave-executable
 
 install:
-	python deploy.py \
+	python install.py \
 		--mesos-flavor $(MESOS_FLAVOR) \
 		--mesos-public-slaves $(MESOS_PUBLIC_SLAVES) \
 		--mesos-private-slaves $(MESOS_PRIVATE_SLAVES) \
