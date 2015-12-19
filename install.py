@@ -14,22 +14,6 @@ from distutils.util import strtobool
 import configargparse
 
 
-# TODO: After testing that this works, round out by adding all of the other Weave command-line options, with defaults.
-#
-# weave launch        [--password <password>] [--nickname <nickname>]
-#                       [--ipalloc-range <cidr> [--ipalloc-default-subnet <cidr>]]
-#                       [--no-discovery] [--init-peer-count <count>] <peer> ...
-# weave launch-router [--password <password>] [--nickname <nickname>]
-#                       [--ipalloc-range <cidr> [--ipalloc-default-subnet <cidr>]]
-#                       [--no-discovery] [--init-peer-count <count>] <peer> ...
-# weave launch-proxy  [-H <endpoint>] [--with-dns | --without-dns]
-#                       [--no-default-ipalloc] [--no-rewrite-hosts]
-#                       [--hostname-from-label <labelkey>]
-#                       [--hostname-match <regexp>]
-#                       [--hostname-replacement <replacement>]
-#                       [--rewrite-inspect]
-
-
 class Installer:
 
     FLAVOR_VANILLA = "vanilla"
@@ -181,15 +165,14 @@ class Installer:
             help="The range of IP numbers for Weave network nodes in CIDR form. (default: %(default)s)"
         )
 
-        # TODO: Figure out how to specify this
         # DNS domain
-        # weave_router_group.add_argument(
-        #     "--weave-dns-domain",
-        #     dest="weave_dns_domain",
-        #     env_var='WEAVE_DNS_DOMAIN',
-        #     default="weave",
-        #     help="The name to use for DNS names assigned to containers. This becomes: <hostname>.<weave-dns-domain>.local. (default: %(default)s)"
-        # )
+        weave_router_group.add_argument(
+            "--weave-router-dns-domain",
+            dest="weave_router_dns_domain",
+            env_var='WEAVE_ROUTER_DNS_DOMAIN',
+            default="weave",
+            help="The name to use for DNS names assigned to containers. This becomes: <hostname>.<weave-dns-domain>.local. (default: %(default)s)"
+        )
 
 
     def add_weave_proxy_arguments(self):
@@ -274,7 +257,8 @@ class Installer:
         self.weave_router_substitutions = [
             {'pattern': '{{BIN_DIR}}', 'replacement': self.weave_bin_dir},
             {'pattern': '{{PEERS}}', 'replacement': weave_router_peers},
-            {'pattern': '{{IPALLOC_RANGE}}', 'replacement': self.args.weave_router_ipalloc_range}
+            {'pattern': '{{IPALLOC_RANGE}}', 'replacement': self.args.weave_router_ipalloc_range},
+            {'pattern': '{{DNS_DOMAIN}}', 'replacement': self.args.weave_router_dns_domain}
         ]
         self.weave_proxy_substitutions = [
             {'pattern': '{{BIN_DIR}}', 'replacement': self.weave_bin_dir}

@@ -21,7 +21,7 @@ EnvironmentFile=-/etc/weave.env
 EnvironmentFile=-/etc/weave.%H.env
 
 # Start
-ExecStartPre={{BIN_DIR}}/weave launch-router --ipalloc-range {{IPALLOC_RANGE}} {{PEERS}}
+ExecStartPre={{BIN_DIR}}/weave launch-router --ipalloc-range {{IPALLOC_RANGE}} --dns-domain {{DNS_DOMAIN}} {{PEERS}}
 ExecStart=/usr/bin/docker attach weave
 
 # Stop
