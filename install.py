@@ -5,7 +5,6 @@ import sys
 from subprocess import call
 import string
 import os
-from distutils.version import StrictVersion
 import json
 
 # Third Party
@@ -51,6 +50,7 @@ class Installer:
         self.parser = configargparse.ArgumentParser(description='Install Weave to a Mesos cluster')
 
         # Add arguments to the parser
+        self.add_common_arguments()
         self.add_mesos_arguments()
         self.add_weave_arguments()
 
@@ -58,18 +58,21 @@ class Installer:
         self.args = self.parser.parse_args()
 
 
+    def add_common_arguments(self):
+
+        # Local temporary directory
+        self.parser.add_argument(
+            "--local-tmp-dir",
+            dest="local_tmp_dir",
+            env_var='LOCAL_TMP_DIR',
+            default="/tmp",
+            help="Path for a local temporary directory"
+        )
+
+
     def add_mesos_arguments(self):
 
         mesos_group = self.parser.add_argument_group('mesos', 'Mesos')
-
-        # Version
-        mesos_group.add_argument(
-            "--mesos-version",
-            dest="mesos_version",
-            env_var='MESOS_VERSION',
-            default="0.23.0",
-            help="Version of Mesos on slaves. Used to make decisions about how to install Weave. Default will probably work. (default: '%(default)s')"
-        )
 
         # Flavor
         # TODO: Anyone have a better name for this?
@@ -110,20 +113,6 @@ class Installer:
             help="Admin username for Mesos nodes. (default: Determined by 'flavor')"
         )
 
-        # Service files
-        mesos_group.add_argument(
-            "--mesos-slave-service-file-public",
-            dest="mesos_slave_service_file_public",
-            env_var='MESOS_SLAVE_SERVICE_FILE_PUBLIC',
-            help="Public slave systemd service file. (default: Determined by 'flavor')"
-        )
-        mesos_group.add_argument(
-            "--mesos-slave-service-file-private",
-            dest="mesos_slave_service_file_private",
-            env_var='MESOS_SLAVE_SERVICE_FILE_PRIVATE',
-            help="Private slave systemd service file. (default: Determined by 'flavor')"
-        )
-
         # Service names
         mesos_group.add_argument(
             "--mesos-slave-service-name-public",
@@ -136,6 +125,14 @@ class Installer:
             dest="mesos_slave_service_name_private",
             env_var='MESOS_SLAVE_SERVICE_NAME_PRIVATE',
             help="Name of Mesos private slave systemd service. (default: Determined by 'flavor')"
+        )
+
+        # Executor environment file
+        mesos_group.add_argument(
+            "--mesos-slave-executor-env-file",
+            dest="mesos_slave_executor_env_file",
+            env_var='MESOS_SLAVE_EXECUTOR_ENV_FILE',
+            help="Path for the Mesos executor environment config file. (default: Determined by 'flavor')"
         )
 
 
@@ -201,9 +198,6 @@ class Installer:
         if (len(self.args.mesos_public_slaves) == 0 and len(self.args.mesos_private_slaves) == 0):
             raise ValueError("You must specify at least one Mesos slave node using --mesos-public-slaves or --mesos_private_slaves")
 
-        # Make sure that the given Mesos version string is well-formed
-        StrictVersion(self.args.mesos_version)
-
         # Validate the Mesos "flavor"
         if not self.is_valid_mesos_flavor(self.args.mesos_flavor):
             raise ValueError("Invalid mesos-flavor: " + self.args.mesos_flavor)
@@ -232,27 +226,23 @@ class Installer:
         raise Exception("Not yet implemented. Someone needs to determine the defaults for 'vanilla' Mesos flavor")
         # if self.args.mesos_admin_username is None:
         #     self.args.mesos_admin_username = "TBD"
-        # if self.args.mesos_slave_service_file_public is None:
-        #     self.args.mesos_slave_service_file_public = "TBD"
-        # if self.args.mesos_slave_service_file_private is None:
-        #     self.args.mesos_slave_service_file_private = "TBD"
         # if self.args.mesos_slave_service_name_public is None:
         #     self.args.mesos_slave_service_name_public = "TBD"
         # if self.args.mesos_slave_service_name_private is None:
         #     self.args.mesos_slave_service_name_private = "TBD"
+        # if self.args.mesos_slave_executor_env_file is None:
+        #     self.args.mesos_slave_executor_env_file = "TBD"
 
 
     def default_arguments_dcos(self):
         if self.args.mesos_admin_username is None:
             self.args.mesos_admin_username = "core"
-        if self.args.mesos_slave_service_file_public is None:
-            self.args.mesos_slave_service_file_public = "/etc/systemd/system/dcos-mesos-slave-public.service"
-        if self.args.mesos_slave_service_file_private is None:
-            self.args.mesos_slave_service_file_private = "/etc/systemd/system/dcos-mesos-slave.service"
         if self.args.mesos_slave_service_name_public is None:
             self.args.mesos_slave_service_name_public = "dcos-mesos-slave-public.service"
         if self.args.mesos_slave_service_name_private is None:
             self.args.mesos_slave_service_name_private = "dcos-mesos-slave.service"
+        if self.args.mesos_slave_executor_env_file is None:
+            self.args.mesos_slave_executor_env_file = "/opt/mesosphere/etc/mesos-executor-environment.json"
 
 
     def process_arguments(self):
@@ -265,9 +255,6 @@ class Installer:
         if self.args.weave_install_dir is None:
             self.args.weave_install_dir = "/home/" + self.args.mesos_admin_username
 
-        # Parse Mesos semantic version string
-        self.mesos_version = StrictVersion(self.args.mesos_version)
-        
         # Build parameter substitution maps
         weave_router_peers = ' '.join(self.args.mesos_private_slaves + self.args.mesos_public_slaves)
         self.weave_router_substitutions = [
@@ -297,125 +284,150 @@ class Installer:
         print "Installing Weave into Mesos slave: " + slave
 
         # Make sure target directories exist
-        self.execute(slave, "sudo install -d " + self.weave_tmp_dir)
-        self.execute(slave, "sudo install -d " + self.weave_bin_dir)
+        self.execute_remotely(slave, "sudo install -d " + self.weave_tmp_dir)
+        self.execute_remotely(slave, "sudo install -d " + self.weave_bin_dir)
 
         # Install Weave executable
-        self.copy(slave, "weave", self.weave_tmp_dir)
-        self.execute(slave, "sudo install -g root -o root -m 0755 " + self.weave_tmp_dir + "/weave " + self.weave_bin_dir + "/")
+        self.copy_file_local_to_remote(slave, "weave", self.weave_tmp_dir)
+        self.execute_remotely(slave, "sudo install -g root -o root -m 0755 " + self.weave_tmp_dir + "/weave " + self.weave_bin_dir + "/")
 
         # Install Weave services
-        self.copy(slave, "weave.target", self.weave_tmp_dir)
-        self.copy(slave, "weave-router.service", self.weave_tmp_dir, substitutions=self.weave_router_substitutions)
-        self.copy(slave, "weave-proxy.service", self.weave_tmp_dir, substitutions=self.weave_proxy_substitutions)
-        self.execute(slave, "sudo install -g root -o root -m 0644 " + self.weave_tmp_dir + "/weave.target /etc/systemd/system/")
-        self.execute(slave, "sudo install -g root -o root -m 0644 " + self.weave_tmp_dir + "/weave-router.service /etc/systemd/system/")
-        self.execute(slave, "sudo install -g root -o root -m 0644 " + self.weave_tmp_dir + "/weave-proxy.service /etc/systemd/system/")
+        self.copy_file_local_to_remote(slave, "weave.target", self.weave_tmp_dir)
+        self.copy_file_local_to_remote(slave, "weave-router.service", self.weave_tmp_dir, substitutions=self.weave_router_substitutions)
+        self.copy_file_local_to_remote(slave, "weave-proxy.service", self.weave_tmp_dir, substitutions=self.weave_proxy_substitutions)
+        self.execute_remotely(slave, "sudo install -g root -o root -m 0644 " + self.weave_tmp_dir + "/weave.target /etc/systemd/system/")
+        self.execute_remotely(slave, "sudo install -g root -o root -m 0644 " + self.weave_tmp_dir + "/weave-router.service /etc/systemd/system/")
+        self.execute_remotely(slave, "sudo install -g root -o root -m 0644 " + self.weave_tmp_dir + "/weave-proxy.service /etc/systemd/system/")
 
         # Enable Weave services, so they'll start at boot
-        self.execute(slave, "sudo systemctl enable weave-router.service")
-        self.execute(slave, "sudo systemctl enable weave-proxy.service")
+        self.execute_remotely(slave, "sudo systemctl enable weave-router.service")
+        self.execute_remotely(slave, "sudo systemctl enable weave-proxy.service")
 
         # Start (or restart) Weave services
-        self.execute(slave, "sudo systemctl stop weave-router.service")
-        self.execute(slave, "sudo systemctl start weave-router.service")
-        self.execute(slave, "sudo systemctl stop weave-proxy.service")
-        self.execute(slave, "sudo systemctl start weave-proxy.service")
+        self.execute_remotely(slave, "sudo systemctl stop weave-router.service")
+        self.execute_remotely(slave, "sudo systemctl start weave-router.service")
+        self.execute_remotely(slave, "sudo systemctl stop weave-proxy.service")
+        self.execute_remotely(slave, "sudo systemctl start weave-proxy.service")
 
-        # Install weave proxy socket
-        if self.mesos_version < StrictVersion("0.25.0"):
-
-            # Older versions of Mesos seem to pick up neither the MESOS_DOCKER_SOCKET option, nor mesos-slave --docker_host,
-            # or --docker-socket command-line options. The following *does* work.
-
-            if (self.args.flavor is Installer.FLAVOR_VANILLA):
-                slave_executor_env_file = "TBD"
-                raise Exception("Not yet implemented. Someone needs to determine the location of the Docker executor environment properties file for 'vanilla' Mesos flavor")
-            else:
-                slave_executor_env_file = "/opt/mesosphere/etc/mesos-executor-environment.json"
-            self.add_property_to_json_file(slave, slave_executor_env_file, "DOCKER_HOST", "unix:///var/run/weave/weave.sock")
-
-        else: # version >= 0.25.0
-
-            # The following allegedly works for newer versions of Mesos, but this has not been tested, yet.
-
-            if (is_public):
-                slave_service_file = self.args.mesos_slave_service_file_public
-            else:
-                slave_service_file = self.args.mesos_slave_service_file_private
-            line = "MESOS_DOCKER_SOCKET=" + self.args.weave_proxy_socket
-            self.add_line_to_file(slave, line, slave_service_file)
-
-            # If the above does not work, the following might, on DCOS Mesos
-            # command = "sudo sed -i 's|^ExecStart\\(.*\\)mesos-slave$|ExecStart\\1mesos-slave --docker_host=unix:://{}|' {}".format(self.args.weave_proxy_socket, slave_service_file)
-            # self.execute(slave, command)
+        # Install weave proxy socket into Mesos slave
+        key = "DOCKER_HOST"
+        value = "unix:///var/run/weave/weave.sock"
+        self.add_property_to_remote_json_file(slave, self.args.mesos_slave_executor_env_file, key, value)
 
         # Restart the Mesos slave so it picks up the new configuration
         if is_public:
             service_name = self.args.mesos_slave_service_name_public
         else:
             service_name = self.args.mesos_slave_service_name_private
-        self.execute(slave, "sudo systemctl daemon-reload")
-        self.execute(slave, "sudo systemctl stop " + service_name)
-        self.execute(slave, "sudo systemctl start " + service_name)
+        self.execute_remotely(slave, "sudo systemctl daemon-reload")
+        self.execute_remotely(slave, "sudo systemctl stop " + service_name)
+        self.execute_remotely(slave, "sudo systemctl start " + service_name)
 
 
     # Helpers -----------------------------------------------
 
-    def copy(self, host, src_file, dst_dir, **kwargs):
-        filename = os.path.basename(src_file)
-        dst_file = self.args.mesos_admin_username + "@" + host + ":" + dst_dir + "/" + filename
-        description = "scp " + src_file + " " + dst_file
+    def copy_file_local_to_remote(self, host, local_file_path, remote_dir_path, **kwargs):
+        
+        # Build remote file path
+        file_name = os.path.basename(local_file_path)
+        remote_file_path = remote_dir_path + "/" + file_name
+        
+        # Print description
+        description = "Copying file local to remote: " + local_file_path + " ---> " + remote_file_path
         print description
+        
+        # Do substitutions, if specified
         do_substitute = 'substitutions' in kwargs
-        substituted_file = "/tmp/" + filename
+        substituted_file_path = self.args.local_tmp_dir + "/" + file_name
         if do_substitute:
             substitutions = kwargs['substitutions']
-            src_file = self.substitute(src_file, substitutions, substituted_file)
-        result = call(["scp", src_file, dst_file])
+            local_file_path = self.substitute(local_file_path, substitutions, substituted_file_path)
+        
+        # Copy the file with "scp"
+        user_at_host = self.args.mesos_admin_username + "@" + host + ":"
+        result = call(["scp", local_file_path, user_at_host + remote_file_path])
         if result is not 0:
-            raise Exception("Copying to remote failed with code: " + str(result))
+            raise Exception("Copying file to remote failed with code: " + str(result))
+        
+        # Clean up
         if do_substitute:
-            os.remove(substituted_file)
+            os.remove(substituted_file_path)
 
 
-    def substitute(self, file, substitutions, substituted_file):
-        with open(file, "r") as source:
+    def copy_file_remote_to_local(self, host, remote_file_path, local_dir_path):
+        
+        # Build local file path
+        file_name = os.path.basename(remote_file_path)
+        local_file_path = local_dir_path + "/" + file_name
+
+        # Print description
+        description = "Copying file remote to local: " + remote_file_path + " ---> " + local_file_path
+        print description
+
+        # Copy the file with "scp"
+        user_at_host = self.args.mesos_admin_username + "@" + host + ":"
+        result = call(["scp", user_at_host + remote_file_path, local_file_path])
+        if result is not 0:
+            raise Exception("Copying file from remote failed with code: " + str(result))
+
+
+    def substitute(self, file_path, substitutions, substituted_file_path):
+        with open(file_path, "r") as source:
             content = source.read()
         for substitution in substitutions:
             pattern = substitution['pattern']
             replacement = substitution['replacement']
             content = string.replace(content, pattern, replacement)
-        with open(substituted_file, "w") as sink:
+        with open(substituted_file_path, "w") as sink:
             sink.write(content)
-        return substituted_file
+        return substituted_file_path
 
 
-    def execute(self, host, command):
-        admin_at_host = self.args.mesos_admin_username + "@" + host
-        description = "ssh " + admin_at_host + " " + command
+    def execute_remotely(self, host, command):
+
+        # Print description
+        description = "Executing remotely: " + command
         print description
+
+        # Execute command with "ssh"
+        admin_at_host = self.args.mesos_admin_username + "@" + host
         result = call(["ssh", admin_at_host, command])
         if result is not 0:
             raise Exception("Remote execution failed with code: " + str(result))
 
 
-    def add_line_to_file(self, host, line, file):
-        self.execute(host, "sudo touch " + file)
-        self.execute(host, "sudo chown root:root " + file)
-        self.execute(host, "sudo chmod 644 " + file)
-        self.execute(host, "sudo grep -q -F '{0}' {1} || printf '{0}\n' | sudo tee -a {1}".format(line, file))
+    def add_line_to_remote_file(self, host, line, file_path):
+        self.execute_remotely(host, "sudo touch " + file_path)
+        self.execute_remotely(host, "sudo chown root:root " + file_path)
+        self.execute_remotely(host, "sudo chmod 644 " + file_path)
+        self.execute_remotely(host, "sudo grep -q -F '{0}' {1} || printf '{0}\n' | sudo tee -a {1}".format(line, file_path))
 
 
-    def add_property_to_json_file(self, host, file, key, value):
-        if not os.path.exists(file):
-            raise Exception("Could not find file: " + file)
-        with open(file, "r") as source:
+    def add_property_to_remote_json_file(self, host, remote_file_path, key, value):
+
+        # Get a local copy of the remote JSON file
+        file_name = os.path.basename(remote_file_path)
+        local_file_path = self.args.local_tmp_dir + "/" + file_name
+        self.copy_file_remote_to_local(host, remote_file_path, self.args.local_tmp_dir)
+
+        # Load JSON from local file
+        with open(local_file_path, "r") as source:
             properties = json.load(source)
 
-        properties = json.loads(file)
-        if not properties.contains("kkk"):
-            pass
+        # Add the given property to the JSON, if it's not already there
+        if not hasattr(properties, key):
+            setattr(properties, key, value)
+
+        # Save JSON back to local file
+        with open(local_file_path, "w") as sink:
+            json.dump(properties, sink)
+
+        # Replace the remote JSON file with the local one
+        remote_dir_path = os.path.dirname(remote_file_path)
+        self.copy_file_local_to_remote(host, local_file_path, remote_dir_path)
+
+        # Clean up
+        os.remove(local_file_path)
 
 
 # Main entry point
