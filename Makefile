@@ -4,11 +4,11 @@
 
 # Modify these lists for your Mesos cluster
 MESOS_PUBLIC_SLAVES = \
-	slave1.public.mesos.mycompany.com \
-	slave2.public.mesos.mycompany.com
+	slave1.public.mesos.ftaws.net \
+	slave2.public.mesos.ftaws.net
 MESOS_PRIVATE_SLAVES = \
-	slave1.private.mesos.mycompany.com \
-	slave2.private.mesos.mycompany.com
+	slave1.private.mesos.ftaws.net \
+	slave2.private.mesos.ftaws.net
 
 
 # Choose one of the following:

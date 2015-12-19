@@ -5,7 +5,10 @@ import sys
 from subprocess import call
 import string
 import os
+import pwd
+import grp
 import json
+from distutils.util import strtobool
 
 # Third Party
 import configargparse
@@ -40,6 +43,10 @@ class Installer:
         self.default_arguments()
         self.process_arguments()
 
+        # Make sure the Weave executable was downloaded
+        if not os.path.exists("weave"):
+            raise ValueError("Weave executable has not been downloaded. Use 'make local-download-weave-executable'.")
+
         # Do the deed
         self.install()
 
@@ -64,9 +71,17 @@ class Installer:
         self.parser.add_argument(
             "--local-tmp-dir",
             dest="local_tmp_dir",
-            env_var='LOCAL_TMP_DIR',
             default="/tmp",
             help="Path for a local temporary directory"
+        )
+
+        # Answer "yes" to any prompts
+        self.parser.add_argument(
+            "-y",
+            action='store_true',
+            dest="yes",
+            default=False,
+            help="Answer 'yes' to prompts to proceed with installation at any point"
         )
 
 
@@ -75,7 +90,6 @@ class Installer:
         mesos_group = self.parser.add_argument_group('mesos', 'Mesos')
 
         # Flavor
-        # TODO: Anyone have a better name for this?
         mesos_group.add_argument(
             "--mesos-flavor",
             dest="mesos_flavor",
@@ -204,9 +218,9 @@ class Installer:
 
 
     def is_valid_mesos_flavor(self, name):
-        if name is Installer.FLAVOR_VANILLA:
+        if name == Installer.FLAVOR_VANILLA:
             return True
-        if name is Installer.FLAVOR_DCOS:
+        if name == Installer.FLAVOR_DCOS:
             return True
         return False
 
@@ -220,6 +234,10 @@ class Installer:
         # DCOS flavor
         elif self.args.mesos_flavor == Installer.FLAVOR_DCOS:
             self.default_arguments_dcos()
+
+        # Let Weave installation directory default to the home directory of the Mesos admin user
+        if self.args.weave_install_dir is None:
+            self.args.weave_install_dir = "/home/" + self.args.mesos_admin_username
 
 
     def default_arguments_vanilla(self):
@@ -250,10 +268,6 @@ class Installer:
         # Build directory paths for use later
         self.weave_bin_dir = self.args.weave_install_dir + "/bin"
         self.weave_tmp_dir = self.args.weave_install_dir + "/tmp"
-
-        # Let Weave installation directory default to the home directory of the Mesos admin user
-        if self.args.weave_install_dir is None:
-            self.args.weave_install_dir = "/home/" + self.args.mesos_admin_username
 
         # Build parameter substitution maps
         weave_router_peers = ' '.join(self.args.mesos_private_slaves + self.args.mesos_public_slaves)
@@ -288,16 +302,38 @@ class Installer:
         self.execute_remotely(slave, "sudo install -d " + self.weave_bin_dir)
 
         # Install Weave executable
-        self.copy_file_local_to_remote(slave, "weave", self.weave_tmp_dir)
-        self.execute_remotely(slave, "sudo install -g root -o root -m 0755 " + self.weave_tmp_dir + "/weave " + self.weave_bin_dir + "/")
+        self.copy_file_local_to_remote(
+            slave,
+            "weave",
+            self.weave_bin_dir + "/",
+            mode=0755,
+            user="root", group="root"
+        )
 
         # Install Weave services
-        self.copy_file_local_to_remote(slave, "weave.target", self.weave_tmp_dir)
-        self.copy_file_local_to_remote(slave, "weave-router.service", self.weave_tmp_dir, substitutions=self.weave_router_substitutions)
-        self.copy_file_local_to_remote(slave, "weave-proxy.service", self.weave_tmp_dir, substitutions=self.weave_proxy_substitutions)
-        self.execute_remotely(slave, "sudo install -g root -o root -m 0644 " + self.weave_tmp_dir + "/weave.target /etc/systemd/system/")
-        self.execute_remotely(slave, "sudo install -g root -o root -m 0644 " + self.weave_tmp_dir + "/weave-router.service /etc/systemd/system/")
-        self.execute_remotely(slave, "sudo install -g root -o root -m 0644 " + self.weave_tmp_dir + "/weave-proxy.service /etc/systemd/system/")
+        self.copy_file_local_to_remote(
+            slave,
+            "weave.target",
+            "/etc/systemd/system/",
+            mode=0644,
+            user="root", group="root"
+        )
+        self.copy_file_local_to_remote(
+            slave,
+            "weave-router.service",
+            "/etc/systemd/system/",
+            mode=0644,
+            user="root", group="root",
+            substitutions=self.weave_router_substitutions
+        )
+        self.copy_file_local_to_remote(
+            slave,
+            "weave-proxy.service",
+            "/etc/systemd/system/",
+            mode=0644,
+            user="root", group="root",
+            substitutions=self.weave_proxy_substitutions
+        )
 
         # Enable Weave services, so they'll start at boot
         self.execute_remotely(slave, "sudo systemctl enable weave-router.service")
@@ -312,9 +348,18 @@ class Installer:
         # Install weave proxy socket into Mesos slave
         key = "DOCKER_HOST"
         value = "unix:///var/run/weave/weave.sock"
-        self.add_property_to_remote_json_file(slave, self.args.mesos_slave_executor_env_file, key, value)
+        self.add_property_to_remote_json_file(
+            slave,
+            self.args.mesos_slave_executor_env_file,
+            key, value,
+            mode=0644,
+            user="root", group="root"
+        )
 
         # Restart the Mesos slave so it picks up the new configuration
+        if not self.args.yes:
+            if not yes_no_query("Are you sure you want to restart Mesos slave " + slave + "?"):
+                exit(0)
         if is_public:
             service_name = self.args.mesos_slave_service_name_public
         else:
@@ -325,63 +370,6 @@ class Installer:
 
 
     # Helpers -----------------------------------------------
-
-    def copy_file_local_to_remote(self, host, local_file_path, remote_dir_path, **kwargs):
-        
-        # Build remote file path
-        file_name = os.path.basename(local_file_path)
-        remote_file_path = remote_dir_path + "/" + file_name
-        
-        # Print description
-        description = "Copying file local to remote: " + local_file_path + " ---> " + remote_file_path
-        print description
-        
-        # Do substitutions, if specified
-        do_substitute = 'substitutions' in kwargs
-        substituted_file_path = self.args.local_tmp_dir + "/" + file_name
-        if do_substitute:
-            substitutions = kwargs['substitutions']
-            local_file_path = self.substitute(local_file_path, substitutions, substituted_file_path)
-        
-        # Copy the file with "scp"
-        user_at_host = self.args.mesos_admin_username + "@" + host + ":"
-        result = call(["scp", local_file_path, user_at_host + remote_file_path])
-        if result is not 0:
-            raise Exception("Copying file to remote failed with code: " + str(result))
-        
-        # Clean up
-        if do_substitute:
-            os.remove(substituted_file_path)
-
-
-    def copy_file_remote_to_local(self, host, remote_file_path, local_dir_path):
-        
-        # Build local file path
-        file_name = os.path.basename(remote_file_path)
-        local_file_path = local_dir_path + "/" + file_name
-
-        # Print description
-        description = "Copying file remote to local: " + remote_file_path + " ---> " + local_file_path
-        print description
-
-        # Copy the file with "scp"
-        user_at_host = self.args.mesos_admin_username + "@" + host + ":"
-        result = call(["scp", user_at_host + remote_file_path, local_file_path])
-        if result is not 0:
-            raise Exception("Copying file from remote failed with code: " + str(result))
-
-
-    def substitute(self, file_path, substitutions, substituted_file_path):
-        with open(file_path, "r") as source:
-            content = source.read()
-        for substitution in substitutions:
-            pattern = substitution['pattern']
-            replacement = substitution['replacement']
-            content = string.replace(content, pattern, replacement)
-        with open(substituted_file_path, "w") as sink:
-            sink.write(content)
-        return substituted_file_path
-
 
     def execute_remotely(self, host, command):
 
@@ -396,38 +384,147 @@ class Installer:
             raise Exception("Remote execution failed with code: " + str(result))
 
 
-    def add_line_to_remote_file(self, host, line, file_path):
-        self.execute_remotely(host, "sudo touch " + file_path)
-        self.execute_remotely(host, "sudo chown root:root " + file_path)
-        self.execute_remotely(host, "sudo chmod 644 " + file_path)
-        self.execute_remotely(host, "sudo grep -q -F '{0}' {1} || printf '{0}\n' | sudo tee -a {1}".format(line, file_path))
+    def copy_file_remote_to_local(self, host, remote_file_path, local_path, **kwargs):
+
+        # Build local file path
+        file_name = os.path.basename(remote_file_path)
+        if local_path.endswith("/"):
+            local_file_path = local_path + file_name
+        else:
+            local_file_path = local_path
+
+        # Print description
+        description = "Copying remote file to local: " + remote_file_path + " ---> " + local_file_path
+        print description
+
+        # Make a copy of the remote file on the remote machine (because scp alone can't get sudoer access to it)
+        remote_tmp_file_path = self.weave_tmp_dir + "/" + file_name
+        self.execute_remotely(host, "sudo cp -f " + remote_file_path + " " + remote_tmp_file_path)
+
+        # Copy the file with "scp"
+        user_at_host = self.args.mesos_admin_username + "@" + host + ":"
+        result = call(["scp", user_at_host + remote_tmp_file_path, local_file_path])
+        if result is not 0:
+            raise Exception("Copying file from remote failed with code: " + str(result))
+
+        # Set mode of local file, if provided
+        if 'mode' in kwargs:
+            mode = kwargs['mode']
+            os.chmod(local_file_path, mode)
+
+        # Set ownership of local file, if provided
+        uid = -1
+        gid = -1
+        if 'user' in kwargs:
+            user = kwargs['user']
+            uid = pwd.getpwnam(user).pw_uid
+        if 'group' in kwargs:
+            group = kwargs['group']
+            gid = grp.getgrnam(group).gr_gid
+        if uid != -1 or gid != -1:
+            os.chown(local_file_path, uid, gid)
+
+        # Clean up
+        self.execute_remotely(host, "rm -f " + remote_tmp_file_path)
 
 
-    def add_property_to_remote_json_file(self, host, remote_file_path, key, value):
+    def copy_file_local_to_remote(self, host, local_file_path, remote_path, **kwargs):
+        
+        # Build remote file path
+        file_name = os.path.basename(local_file_path)
+        if remote_path.endswith("/"):
+            remote_file_path = remote_path + file_name
+        else:
+            remote_file_path = remote_path
+
+        # Print description
+        description = "Copying local file to remote: " + local_file_path + " ---> " + remote_file_path
+        print description
+        
+        # Do substitutions, if specified, in a local copy of the file
+        do_substitute = 'substitutions' in kwargs
+        substituted_file_path = self.args.local_tmp_dir + "/" + file_name
+        if do_substitute:
+            substitutions = kwargs['substitutions']
+            local_file_path = self.substitute(local_file_path, substitutions, substituted_file_path)
+
+        # Copy the file with "scp" to a remote temporary file (because scp alone can't get sudoer access)
+        remote_tmp_file_path = self.weave_tmp_dir + "/" + file_name
+        user_at_host = self.args.mesos_admin_username + "@" + host + ":"
+        result = call(["scp", local_file_path, user_at_host + remote_tmp_file_path])
+        if result is not 0:
+            raise Exception("Copying file to remote failed with code: " + str(result))
+
+        # Copy the remote temporary file into place with sudoer access
+        self.execute_remotely(host, "sudo cp -f " + remote_tmp_file_path + " " + remote_file_path)
+
+        # Set mode of remote file, if provided
+        if 'mode' in kwargs:
+            mode = kwargs['mode']
+            self.execute_remotely(host, "sudo chmod " + oct(mode) + " " + remote_file_path)
+
+        # Set ownership of remote file, if provided
+        ownership = ""
+        if 'user' in kwargs:
+            user = kwargs['user']
+            ownership += user
+        if 'group' in kwargs:
+            group = kwargs['group']
+            ownership += ":" + group
+        if ownership != "":
+            self.execute_remotely(host, "sudo chown " + ownership + " " + remote_file_path)
+
+        # Clean up
+        self.execute_remotely(host, "rm -f " + remote_tmp_file_path)
+        if do_substitute:
+            os.remove(substituted_file_path)
+
+
+    def substitute(self, file_path, substitutions, substituted_file_path):
+        with open(file_path, "r") as source:
+            content = source.read()
+        for substitution in substitutions:
+            pattern = substitution['pattern']
+            replacement = substitution['replacement']
+            content = string.replace(content, pattern, replacement)
+        with open(substituted_file_path, "w") as sink:
+            sink.write(content)
+        return substituted_file_path
+
+
+    def add_property_to_remote_json_file(self, host, remote_file_path, key, value, **kwargs):
 
         # Get a local copy of the remote JSON file
         file_name = os.path.basename(remote_file_path)
         local_file_path = self.args.local_tmp_dir + "/" + file_name
-        self.copy_file_remote_to_local(host, remote_file_path, self.args.local_tmp_dir)
+        self.copy_file_remote_to_local(host, remote_file_path, local_file_path)
 
         # Load JSON from local file
         with open(local_file_path, "r") as source:
             properties = json.load(source)
 
         # Add the given property to the JSON, if it's not already there
-        if not hasattr(properties, key):
-            setattr(properties, key, value)
+        if not key in properties:
+            properties[key] = value
 
         # Save JSON back to local file
         with open(local_file_path, "w") as sink:
             json.dump(properties, sink)
 
         # Replace the remote JSON file with the local one
-        remote_dir_path = os.path.dirname(remote_file_path)
-        self.copy_file_local_to_remote(host, local_file_path, remote_dir_path)
+        self.copy_file_local_to_remote(host, local_file_path, remote_file_path, **kwargs)
 
         # Clean up
         os.remove(local_file_path)
+
+
+def yes_no_query(question):
+    sys.stdout.write('%s [y/n]\n' % question)
+    while True:
+        try:
+            return strtobool(raw_input().lower())
+        except ValueError:
+            sys.stdout.write('Please respond with \'y\' or \'n\'.\n')
 
 
 # Main entry point
