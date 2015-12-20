@@ -25,7 +25,7 @@ EnvironmentFile=-/etc/weave.env
 EnvironmentFile=-/etc/weave.%H.env
 
 # Start
-ExecStartPre={{BIN_DIR}}/weave launch-proxy --with-dns
+ExecStartPre={{BIN_DIR}}/weave launch-proxy {{WITH_DNS}} {{HOSTNAME_FROM_LABEL}} {{HOSTNAME_MATCH}} {{HOSTNAME_REPLACEMENT}}
 ExecStart=/usr/bin/docker attach weaveproxy
 
 # Stop

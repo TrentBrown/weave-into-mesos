@@ -9,6 +9,8 @@ import pwd
 import grp
 import json
 from distutils.util import strtobool
+import re
+
 
 # Third Party
 import configargparse
@@ -23,13 +25,12 @@ class Installer:
 
         # Handle arguments
         self.parse_arguments()
-        self.validate_arguments()
         self.default_arguments()
         self.process_arguments()
 
         # Make sure the Weave executable was downloaded
         if not os.path.exists("weave"):
-            raise ValueError("Weave executable has not been downloaded. Use 'make local-download-weave-executable'.")
+            raise ValueError("Weave executable has not been downloaded yet. Use 'make setup' to get it.")
 
         # Do the deed
         self.install()
@@ -55,17 +56,18 @@ class Installer:
         self.parser.add_argument(
             "--local-tmp-dir",
             dest="local_tmp_dir",
+            env_var='WIM_TMP_DIR',
             default="/tmp",
             help="Path for a local temporary directory"
         )
 
-        # Answer "yes" to any prompts
+        # Skip warnings?
         self.parser.add_argument(
-            "-y",
-            action='store_true',
-            dest="yes",
+            "--skip-warnings",
+            dest="skip_warnings",
+            env_var='WIM_SKIP_WARNINGS',
             default=False,
-            help="Answer 'yes' to prompts to proceed with installation at any point"
+            help="Skip warnings about proceeding with installation at various points"
         )
 
 
@@ -88,19 +90,15 @@ class Installer:
             "--mesos-public-slaves",
             dest="mesos_public_slaves",
             env_var='MESOS_PUBLIC_SLAVES',
-            nargs='*',
             type=str,
-            default=[],
-            help="Space-separated list of addresses of public Mesos slave nodes"
+            help="List of addresses of public Mesos slave nodes. Delimited by commas, colons, semicolons, pipes, or whitespace. (default: '%(default)s')"
         )
         mesos_group.add_argument(
             "--mesos-private-slaves",
             dest="mesos_private_slaves",
             env_var='MESOS_PRIVATE_SLAVES',
-            nargs='*',
             type=str,
-            default=[],
-            help="Space-separated list of addresses of private Mesos slave nodes"
+            help="List of addresses of private Mesos slave nodes. Delimited by commas, colons, semicolons, pipes, or whitespace. (default: '%(default)s')"
         )
 
         # Admin username
@@ -156,22 +154,44 @@ class Installer:
 
         weave_router_group = self.parser.add_argument_group('weave-router', 'Weave Router')
 
-        # IP number allocation range
+        # ipalloc-range
         weave_router_group.add_argument(
             "--weave-router-ipalloc-range",
             dest="weave_router_ipalloc_range",
             env_var='WEAVE_ROUTER_IPALLOC_RANGE',
-            default="10.32.0.0/12",  # The Mesos default
-            help="The range of IP numbers for Weave network nodes in CIDR form. (default: %(default)s)"
+            help="The range of IP numbers for Weave network nodes in CIDR form. (Weave default: 10.32.0.0/12)"
         )
 
-        # DNS domain
+        # dns-domain
         weave_router_group.add_argument(
             "--weave-router-dns-domain",
             dest="weave_router_dns_domain",
             env_var='WEAVE_ROUTER_DNS_DOMAIN',
-            default="weave",
-            help="The name to use for DNS names assigned to containers. This becomes: <hostname>.<weave-dns-domain>.local. (default: %(default)s)"
+            help="The name to use for DNS names assigned to containers. If you override the default, be sure to set your container hostnames to match. (Weave default: weave.local)"
+        )
+
+        # password
+        weave_router_group.add_argument(
+            "--weave-router-password",
+            dest="weave_router_password",
+            env_var='WEAVE_ROUTER_PASSWORD',
+            help="Router password"
+        )
+
+        # nickname
+        weave_router_group.add_argument(
+            "--weave-router-nickname",
+            dest="weave_router_nickname",
+            env_var='WEAVE_ROUTER_NICKNAME',
+            help="Router nickname"
+        )
+
+        # init-peer-count
+        weave_router_group.add_argument(
+            "--weave-router-init-peer-count",
+            dest="weave_router_init_peer_count",
+            env_var='WEAVE_ROUTER_INIT_PEER_COUNT',
+            help="Router initial peer count"
         )
 
 
@@ -188,16 +208,45 @@ class Installer:
             help="The Weave proxy socket path. (default: %(default)s)"
         )
 
+        # with-dns/without-dns
+        with_dns_parser = weave_proxy_group.add_mutually_exclusive_group(required=False)
+        with_dns_parser.add_argument(
+            '--weave-proxy-with-dns',
+            dest='weave_proxy_dns',
+            env_var='WEAVE_PROXY_WITH_DNS',
+            action='store_true'
+        )
+        with_dns_parser.add_argument(
+            '--weave-proxy-without-dns',
+            dest='weave_proxy_dns',
+            env_var='WEAVE_PROXY_WITHOUT_DNS',
+            action='store_false'
+        )
+        weave_proxy_group.set_defaults(weave_proxy_dns=True)
 
-    def validate_arguments(self):
+        # hostname-from-label
+        weave_proxy_group.add_argument(
+            "--weave-proxy-hostname-from-label",
+            dest="weave_proxy_hostname_from_label",
+            env_var='WEAVE_PROXY_HOSTNAME_FROM_LABEL',
+            help="Hostname label."
+        )
 
-        # Make sure at least one slave node was specified
-        if (len(self.args.mesos_public_slaves) == 0 and len(self.args.mesos_private_slaves) == 0):
-            raise ValueError("You must specify at least one Mesos slave node using --mesos-public-slaves or --mesos_private_slaves")
+        # hostname-match
+        weave_proxy_group.add_argument(
+            "--weave-proxy-hostname-match",
+            dest="weave_proxy_hostname_match",
+            env_var='WEAVE_PROXY_HOSTNAME_MATCH',
+            help="Hostname match."
+        )
 
-        # Validate the Mesos "flavor"
-        if not self.is_valid_mesos_flavor(self.args.mesos_flavor):
-            raise ValueError("Invalid mesos-flavor: " + self.args.mesos_flavor)
+        # hostname-replacement
+        weave_proxy_group.add_argument(
+            "--weave-proxy-hostname-replacement",
+            dest="weave_proxy_hostname_replacement",
+            env_var='WEAVE_PROXY_HOSTNAME_REPLACEMENT',
+            help="Hostname replacement."
+        )
 
 
     def is_valid_mesos_flavor(self, name):
@@ -248,31 +297,90 @@ class Installer:
 
     def process_arguments(self):
 
+        # Parse slave node lists
+        self.mesos_public_slaves = parse_delimited_list(self.args.mesos_public_slaves)
+        self.mesos_private_slaves = parse_delimited_list(self.args.mesos_private_slaves)
+
+        # Make sure at least one slave node was specified
+        if (len(self.mesos_public_slaves) == 0 and len(self.mesos_private_slaves) == 0):
+            raise ValueError("You must specify at least one Mesos slave node using --mesos-public-slaves or --mesos_private_slaves")
+
+        # If either weave-proxy-hostname-match or weave-proxy-hostname-replacement were specified, make sure that both were
+        weave_proxy_hostname_match_specified = (not self.args.weave_proxy_hostname_match is None)
+        weave_proxy_hostname_replacement_specified = (not self.args.weave_proxy_hostname_replacement is None)
+        one_specified = (weave_proxy_hostname_match_specified or weave_proxy_hostname_replacement_specified)
+        both_specified = (weave_proxy_hostname_match_specified and weave_proxy_hostname_replacement_specified)
+        if one_specified and not both_specified:
+            raise ValueError("You must specify both --weave-proxy-hostname-match and --weave-proxy-hostname-replacement (or neither)")
+
+        # Validate the Mesos "flavor"
+        if not self.is_valid_mesos_flavor(self.args.mesos_flavor):
+            raise ValueError("Invalid mesos-flavor: " + self.args.mesos_flavor)
+
         # Build directory paths for use later
         self.weave_bin_dir = self.args.weave_install_dir + "/bin"
         self.weave_tmp_dir = self.args.weave_install_dir + "/tmp"
 
-        # Build parameter substitution maps
-        weave_router_peers = ' '.join(self.args.mesos_private_slaves + self.args.mesos_public_slaves)
-        self.weave_router_substitutions = [
-            {'pattern': '{{BIN_DIR}}', 'replacement': self.weave_bin_dir},
-            {'pattern': '{{PEERS}}', 'replacement': weave_router_peers},
-            {'pattern': '{{IPALLOC_RANGE}}', 'replacement': self.args.weave_router_ipalloc_range},
-            {'pattern': '{{DNS_DOMAIN}}', 'replacement': self.args.weave_router_dns_domain}
-        ]
-        self.weave_proxy_substitutions = [
-            {'pattern': '{{BIN_DIR}}', 'replacement': self.weave_bin_dir}
-        ]
+        # Append "." to DNS domain, if it's not already there
+        if not self.args.weave_router_dns_domain.endswith("."):
+            self.args.weave_router_dns_domain += "."
+
+        # Build the Weave systemd service file substitution maps
+        self.build_weave_router_substitutions()
+        self.build_weave_proxy_substitutions()
+
+
+    def build_weave_router_substitutions(self):
+
+        substitutions = []
+
+        self.append_substitution(substitutions, "{{BIN_DIR}}", self.args.weave_bin_dir)
+        weave_router_peers = ' '.join(self.mesos_private_slaves + self.mesos_public_slaves)
+        self.append_substitution(substitutions, "{{PEERS}}", weave_router_peers)
+        self.append_substitution(substitutions, "{{IPALLOC_RANGE}}", self.args.weave_router_ipalloc_range, option="--ipalloc-range")
+        self.append_substitution(substitutions, "{{DNS_DOMAIN}}", self.args.weave_router_dns_domain, option="--dns-domain")
+        self.append_substitution(substitutions, "{{PASSWORD}}", self.args.weave_router_password, option="--password")
+        self.append_substitution(substitutions, "{{NICKNAME}}", self.args.weave_router_nickname, option="--nickname")
+        self.append_substitution(substitutions, "{{INIT_PEER_COUNT}}", self.args.weave_router_init_peer_count, option="--init-peer-count")
+
+        self.weave_router_substitutions = substitutions
+
+
+    def build_weave_proxy_substitutions(self):
+
+        substitutions = []
+
+        self.append_substitution(substitutions, "{{BIN_DIR}}", self.args.weave_bin_dir)
+        if self.args.weave_proxy_dns:
+            value = "--with-dns"
+        else:
+            value = "--without-dns"
+        self.append_substitution(substitutions, "{{WITH_DNS}}", value)
+        self.append_substitution(substitutions, "{{HOSTNAME_FROM_LABEL}}", self.args.weave_proxy_hostname_from_label, option="--hostname-from-label")
+        self.append_substitution(substitutions, "{{HOSTNAME_MATCH}}", self.args.weave_proxy_hostname_match, option="--hostname-match")
+        self.append_substitution(substitutions, "{{HOSTNAME_REPLACEMENT}}", self.args.weave_proxy_hostname_replacement, option="--hostname-replacement")
+
+        self.weave_proxy_substitutions = substitutions
+
+
+    def append_substitution(self, substutitions, pattern, value, **kwargs):
+        if value is None:
+            replacement = ""
+        elif 'option' in kwargs:
+            replacement = kwargs['option'] + " " + value
+        else:
+            replacement = value
+        substutitions.append({'pattern': pattern, 'replacement': replacement})
 
 
     def install(self):
 
         # Install to public Mesos slaves
-        for slave in self.args.mesos_public_slaves:
+        for slave in self.mesos_public_slaves:
             self.install_into_slave(slave, is_public=True)
 
         # Install to private Mesos slaves
-        for slave in self.args.mesos_private_slaves:
+        for slave in self.mesos_private_slaves:
             self.install_into_slave(slave, is_public=False)
 
 
@@ -288,7 +396,7 @@ class Installer:
         # Install Weave executable
         self.copy_file_local_to_remote(
             slave,
-            "weave",
+            "./weave",
             self.weave_bin_dir + "/",
             mode=0755,
             user="root", group="root"
@@ -297,14 +405,14 @@ class Installer:
         # Install Weave services
         self.copy_file_local_to_remote(
             slave,
-            "weave.target",
+            "./weave.target",
             "/etc/systemd/system/",
             mode=0644,
             user="root", group="root"
         )
         self.copy_file_local_to_remote(
             slave,
-            "weave-router.service",
+            "./weave-router.service",
             "/etc/systemd/system/",
             mode=0644,
             user="root", group="root",
@@ -312,7 +420,7 @@ class Installer:
         )
         self.copy_file_local_to_remote(
             slave,
-            "weave-proxy.service",
+            "./weave-proxy.service",
             "/etc/systemd/system/",
             mode=0644,
             user="root", group="root",
@@ -331,7 +439,7 @@ class Installer:
 
         # Install weave proxy socket into Mesos slave
         key = "DOCKER_HOST"
-        value = "unix:///var/run/weave/weave.sock"
+        value = "unix://" + self.args.weave_proxy_socket
         self.add_property_to_remote_json_file(
             slave,
             self.args.mesos_slave_executor_env_file,
@@ -341,9 +449,9 @@ class Installer:
         )
 
         # Restart the Mesos slave so it picks up the new configuration
-        if not self.args.yes:
-            if not yes_no_query("Are you sure you want to restart Mesos slave " + slave + "?"):
-                exit(0)
+        # TODO: Is there a more graceful way to do this? Currently orphans containers running under Marathon (eg. Chronos).
+        if not self.warn_user("Are you sure you want to restart Mesos slave " + slave + "?"):
+            exit(0)
         if is_public:
             service_name = self.args.mesos_slave_service_name_public
         else:
@@ -430,7 +538,7 @@ class Installer:
         substituted_file_path = self.args.local_tmp_dir + "/" + file_name
         if do_substitute:
             substitutions = kwargs['substitutions']
-            local_file_path = self.substitute(local_file_path, substitutions, substituted_file_path)
+            local_file_path = substitute(local_file_path, substitutions, substituted_file_path)
 
         # Copy the file with "scp" to a remote temporary file (because scp alone can't get sudoer access)
         remote_tmp_file_path = self.weave_tmp_dir + "/" + file_name
@@ -464,18 +572,6 @@ class Installer:
             os.remove(substituted_file_path)
 
 
-    def substitute(self, file_path, substitutions, substituted_file_path):
-        with open(file_path, "r") as source:
-            content = source.read()
-        for substitution in substitutions:
-            pattern = substitution['pattern']
-            replacement = substitution['replacement']
-            content = string.replace(content, pattern, replacement)
-        with open(substituted_file_path, "w") as sink:
-            sink.write(content)
-        return substituted_file_path
-
-
     def add_property_to_remote_json_file(self, host, remote_file_path, key, value, **kwargs):
 
         # Get a local copy of the remote JSON file
@@ -502,13 +598,47 @@ class Installer:
         os.remove(local_file_path)
 
 
-def yes_no_query(question):
-    sys.stdout.write('%s [y/n]\n' % question)
-    while True:
-        try:
-            return strtobool(raw_input().lower())
-        except ValueError:
-            sys.stdout.write('Please respond with \'y\' or \'n\'.\n')
+    def warn_user(self, warning):
+
+        if self.args.skip_warnings:
+            return
+
+        sys.stdout.write('%s [y/n]\n' % warning)
+        while True:
+            try:
+                return strtobool(raw_input().lower())
+            except ValueError:
+                sys.stdout.write('Please respond with \'y\' or \'n\'.\n')
+
+
+def substitute(file_path, substitutions, substituted_file_path):
+    with open(file_path, "r") as source:
+        content = source.read()
+    for substitution in substitutions:
+        pattern = substitution['pattern']
+        replacement = substitution['replacement']
+        content = string.replace(content, pattern, replacement)
+    with open(substituted_file_path, "w") as sink:
+        sink.write(content)
+    return substituted_file_path
+
+
+def parse_delimited_list(string):
+
+    if string is None:
+        return []
+
+    # Trim leading and trailing whitespace
+    string = string.strip()
+
+    if string == "":
+        return []
+
+    # Split on delimiters
+    pattern = re.compile(r'\s*,\s*|\s*:\s*|\s*;\s*|\s*')  # Comma, pipe, colon, semicolon, or whitespace
+    list = re.split(pattern, string)
+
+    return list
 
 
 # Main entry point
