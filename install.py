@@ -66,8 +66,9 @@ class Installer:
             "--skip-warnings",
             dest="skip_warnings",
             env_var='WIM_SKIP_WARNINGS',
-            default=False,
-            help="Skip warnings about proceeding with installation at various points"
+            type=str,
+            default="False",
+            help="Skip warnings about proceeding with installation at various points.  (default: '%(default)s')"
         )
 
 
@@ -322,8 +323,11 @@ class Installer:
         self.weave_tmp_dir = self.args.weave_install_dir + "/tmp"
 
         # Append "." to DNS domain, if it's not already there
-        if not self.args.weave_router_dns_domain.endswith("."):
+        if not self.args.weave_router_dns_domain is None and not self.args.weave_router_dns_domain.endswith("."):
             self.args.weave_router_dns_domain += "."
+
+        # Map skip-warnings string to boolean
+        self.skip_warnings = is_truthy(self.args.skip_warnings)
 
         # Build the Weave systemd service file substitution maps
         self.build_weave_router_substitutions()
@@ -334,7 +338,7 @@ class Installer:
 
         substitutions = []
 
-        self.append_substitution(substitutions, "{{BIN_DIR}}", self.args.weave_bin_dir)
+        self.append_substitution(substitutions, "{{BIN_DIR}}", self.weave_bin_dir)
         weave_router_peers = ' '.join(self.mesos_private_slaves + self.mesos_public_slaves)
         self.append_substitution(substitutions, "{{PEERS}}", weave_router_peers)
         self.append_substitution(substitutions, "{{IPALLOC_RANGE}}", self.args.weave_router_ipalloc_range, option="--ipalloc-range")
@@ -350,7 +354,7 @@ class Installer:
 
         substitutions = []
 
-        self.append_substitution(substitutions, "{{BIN_DIR}}", self.args.weave_bin_dir)
+        self.append_substitution(substitutions, "{{BIN_DIR}}", self.weave_bin_dir)
         if self.args.weave_proxy_dns:
             value = "--with-dns"
         else:
@@ -450,7 +454,7 @@ class Installer:
 
         # Restart the Mesos slave so it picks up the new configuration
         # TODO: Is there a more graceful way to do this? Currently orphans containers running under Marathon (eg. Chronos).
-        if not self.warn_user("Are you sure you want to restart Mesos slave " + slave + "?"):
+        if not self.proceed("Are you sure you want to restart Mesos slave " + slave + "?"):
             exit(0)
         if is_public:
             service_name = self.args.mesos_slave_service_name_public
@@ -598,10 +602,10 @@ class Installer:
         os.remove(local_file_path)
 
 
-    def warn_user(self, warning):
+    def proceed(self, warning):
 
-        if self.args.skip_warnings:
-            return
+        if self.skip_warnings:
+            return True
 
         sys.stdout.write('%s [y/n]\n' % warning)
         while True:
@@ -639,6 +643,10 @@ def parse_delimited_list(string):
     list = re.split(pattern, string)
 
     return list
+
+
+def is_truthy(string):
+    return string.lower() in ['true', 'yes', '1', 't', 'y']
 
 
 # Main entry point

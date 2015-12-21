@@ -30,6 +30,7 @@ Say more about this. Set in your environment like this:
     export MESOS_PUBLIC_SLAVES=slave1.public.mesos.mycompany.com,slave2.public.mesos.mycompany.com
     export MESOS_PRIVATE_SLAVES=slave1.private.mesos.mycompany.com,slave2.private.mesos.mycompany.com
     export WEAVE_ROUTER_IPALLOC_RANGE=10.20.0.0/16
+    export WIM_SKIP_WARNINGS=true
 
 Then you can install with:
 
@@ -42,6 +43,7 @@ or call the install.py file directly:
     		--mesos-public-slaves slave1.public.mesos.mycompany.com slave2.public.mesos.mycompany.com \
     		--mesos-private-slaves slave1.private.mesos.mycompany.com slave2.private.mesos.mycompany.com \
     		--weave-router-ipalloc-range 10.20.0.0/16
+    		--skip-warnings True
 
 There are a fair number of other optional parameters you can add to your deployment. To see a list of these, use:
 
