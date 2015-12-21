@@ -22,7 +22,7 @@ This installs Python package dependencies and downloads the latest version of th
 
 ### Usage
 
-Most of the installation options have appropriate defaults. You may only need to specify the addresses of your Mesos slave nodes and one or two other options to complete your installation.
+Most of the installation options have appropriate defaults. You may only need to specify the addresses of your Mesos slave nodes and one or two other options to configure your installer.
 
 Because [DCOS](https://mesosphere.com/product/) Mesos puts things in non-standard locations (presumably to avoid conflicts with another Mesos install), this tool defines the notion of a Mesos "flavor" which represents complete sets of defaults. There are currently two flavors: "dcos" and "vanilla". The latter is the default flavor, though only the former has been implemented, so far. 
 
