@@ -58,7 +58,7 @@ class Installer:
             dest="local_tmp_dir",
             env_var='WIM_TMP_DIR',
             default="/tmp",
-            help="Path for a local temporary directory"
+            help="Path for a local temporary directory. (default: '%(default)s')"
         )
 
         # Skip warnings?
@@ -68,7 +68,7 @@ class Installer:
             env_var='WIM_SKIP_WARNINGS',
             type=str,
             default="False",
-            help="Skip warnings about proceeding with installation at various points.  (default: '%(default)s')"
+            help="Skip warnings about proceeding with installation at various points. (default: '%(default)s')"
         )
 
 
@@ -92,14 +92,14 @@ class Installer:
             dest="mesos_public_slaves",
             env_var='MESOS_PUBLIC_SLAVES',
             type=str,
-            help="List of addresses of public Mesos slave nodes. Delimited by commas, colons, semicolons, pipes, or whitespace. (default: '%(default)s')"
+            help="List of addresses of public Mesos slave nodes. Delimited by commas, colons, semicolons, pipes, or whitespace."
         )
         mesos_group.add_argument(
             "--mesos-private-slaves",
             dest="mesos_private_slaves",
             env_var='MESOS_PRIVATE_SLAVES',
             type=str,
-            help="List of addresses of private Mesos slave nodes. Delimited by commas, colons, semicolons, pipes, or whitespace. (default: '%(default)s')"
+            help="List of addresses of private Mesos slave nodes. Delimited by commas, colons, semicolons, pipes, or whitespace."
         )
 
         # Admin username
@@ -215,13 +215,15 @@ class Installer:
             '--weave-proxy-with-dns',
             dest='weave_proxy_dns',
             env_var='WEAVE_PROXY_WITH_DNS',
-            action='store_true'
+            action='store_true',
+            help="Use Weave DNS."
         )
         with_dns_parser.add_argument(
             '--weave-proxy-without-dns',
             dest='weave_proxy_dns',
             env_var='WEAVE_PROXY_WITHOUT_DNS',
-            action='store_false'
+            action='store_false',
+            help="Do not use Weave DNS."
         )
         weave_proxy_group.set_defaults(weave_proxy_dns=True)
 
@@ -454,6 +456,7 @@ class Installer:
 
         # Restart the Mesos slave so it picks up the new configuration
         # TODO: Is there a more graceful way to do this? Currently orphans containers running under Marathon (eg. Chronos).
+        # TODO: This looks relevant: https://issues.apache.org/jira/browse/MESOS-1474
         if not self.proceed("Are you sure you want to restart Mesos slave " + slave + "?"):
             exit(0)
         if is_public:
