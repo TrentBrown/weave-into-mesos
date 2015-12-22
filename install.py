@@ -444,6 +444,7 @@ class Installer:
         self.execute_remotely(slave, "sudo systemctl start weave-proxy.service")
 
         # Install weave proxy socket into Mesos slave
+        # TODO: See issue: https://github.com/TrentBrown/weave-into-mesos/issues/1
         key = "DOCKER_HOST"
         value = "unix://" + self.args.weave_proxy_socket
         self.add_property_to_remote_json_file(
@@ -607,9 +608,11 @@ class Installer:
 
     def proceed(self, warning):
 
+        # Always proceed if we were told to skip all warnings
         if self.skip_warnings:
             return True
 
+        # Proceed only if the user says we should after we warn them
         sys.stdout.write('%s [y/n]\n' % warning)
         while True:
             try:
@@ -642,7 +645,7 @@ def parse_delimited_list(string):
         return []
 
     # Split on delimiters
-    pattern = re.compile(r'\s*,\s*|\s*:\s*|\s*;\s*|\s*')  # Comma, pipe, colon, semicolon, or whitespace
+    pattern = re.compile(r'\s*,\s*|\s*\|\s*|\s*:\s*|\s*;\s*|\s*')  # Comma, pipe, colon, semicolon, or whitespace
     list = re.split(pattern, string)
 
     return list
