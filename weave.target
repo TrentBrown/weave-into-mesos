@@ -12,7 +12,7 @@ RefuseManualStart=no
 After=network-online.target
 
 # Needs Weave router and proxy services
-Requires=weave-router.service weave-proxy.service
+Requires={{SERVICE_FILE_LIST}}
 
 
 #========================================================================

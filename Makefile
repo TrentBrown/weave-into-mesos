@@ -8,7 +8,11 @@ download-weave-executable:
 	curl -L git.io/weave -o ./weave
 	sudo chmod a+x ./weave
 
-setup: install-python-packages download-weave-executable
+download-weave-scope-executable:
+	curl -L https://github.com/weaveworks/scope/releases/download/latest_release/scope -o ./weave-scope
+	sudo chmod a+x ./weave-scope
+
+setup: install-python-packages download-weave-executable download-weave-scope-executable
 
 install:
 	python install.py

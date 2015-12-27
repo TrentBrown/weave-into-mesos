@@ -1,0 +1,37 @@
+#========================================================================
+[Unit]
+
+# Description
+Description=Weave Scope
+Documentation=http://docs.weave.works/
+
+# Needs Docker service
+Requires=docker.service
+After=docker.service
+
+
+#========================================================================
+[Service]
+
+# Settings
+TimeoutStartSec=0
+
+# Environment
+EnvironmentFile=-/etc/weave.env
+EnvironmentFile=-/etc/weave.%H.env
+
+# Start
+ExecStartPre={{BIN_DIR}}/weave-scope launch
+ExecStart=/usr/bin/docker attach weavescope
+
+# Stop
+ExecStop=/usr/bin/docker stop weavescope
+
+# Restart
+Restart=on-failure
+
+
+#========================================================================
+[Install]
+
+WantedBy=weave.target

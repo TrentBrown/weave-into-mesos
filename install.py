@@ -32,6 +32,10 @@ class Installer:
         if not os.path.exists("weave"):
             raise ValueError("Weave executable has not been downloaded yet. Use 'make setup' to get it.")
 
+        # Make sure the Weave Scope executable was downloaded
+        if not os.path.exists("weave-scope"):
+            raise ValueError("Weave Scope executable has not been downloaded yet. Use 'make setup' to get it.")
+
         # Do the deed
         self.install()
 
@@ -51,6 +55,14 @@ class Installer:
 
 
     def add_common_arguments(self):
+
+        # domain
+        self.parser.add_argument(
+            "--domain",
+            dest="domain",
+            env_var='WIM_DOMAIN',
+            help="The name to use for DNS names assigned to containers. If you override the default, be sure to set your container hostnames to match. (Weave default: weave.local)"
+        )
 
         # Local temporary directory
         self.parser.add_argument(
@@ -143,12 +155,67 @@ class Installer:
             dest="weave_install_dir",
             env_var='WEAVE_INSTALL_DIR',
             default=None,
-            help="The directory in which to install Weave. Must be on a writable volume. (default: /home/<mesos_admin_username>)"
+            help="The directory in which to install Weave. (default: /home/<mesos_admin_username>)"
         )
+
+        # weave-with-router/weave-without-router
+        with_router = weave_group.add_mutually_exclusive_group(required=False)
+        with_router.add_argument(
+            '--weave-with-router',
+            dest='weave_with_router',
+            env_var='WEAVE_WITH_ROUTER',
+            action='store_true',
+            help="Install the Weave router."
+        )
+        with_router.add_argument(
+            '--weave-without-router',
+            dest='weave_with_router',
+            env_var='WEAVE_WITHOUT_ROUTER',
+            action='store_false',
+            help="Do not install the Weave router."
+        )
+        with_router.set_defaults(weave_with_router=True)
+
+        # weave-with-proxy/weave-without-proxy
+        with_proxy = weave_group.add_mutually_exclusive_group(required=False)
+        with_proxy.add_argument(
+            '--weave-with-proxy',
+            dest='weave_with_proxy',
+            env_var='WEAVE_WITH_PROXY',
+            action='store_true',
+            help="Install the Weave proxy."
+        )
+        with_proxy.add_argument(
+            '--weave-without-proxy',
+            dest='weave_with_proxy',
+            env_var='WEAVE_WITHOUT_PROXY',
+            action='store_false',
+            help="Do not install the Weave proxy."
+        )
+        with_proxy.set_defaults(weave_with_proxy=True)
+
+        # weave-with-scope/weave-without-scope
+        with_scope = weave_group.add_mutually_exclusive_group(required=False)
+        with_scope.add_argument(
+            '--weave-with-scope',
+            dest='weave_with_scope',
+            env_var='WEAVE_WITH_SCOPE',
+            action='store_true',
+            help="Install the Weave scope."
+        )
+        with_scope.add_argument(
+            '--weave-without-scope',
+            dest='weave_with_scope',
+            env_var='WEAVE_WITHOUT_SCOPE',
+            action='store_false',
+            help="Do not install the Weave scope."
+        )
+        with_scope.set_defaults(weave_with_scope=True)
 
         # Components
         self.add_weave_router_arguments()
         self.add_weave_proxy_arguments()
+        self.add_weave_scope_arguments()
 
 
     def add_weave_router_arguments(self):
@@ -161,14 +228,6 @@ class Installer:
             dest="weave_router_ipalloc_range",
             env_var='WEAVE_ROUTER_IPALLOC_RANGE',
             help="The range of IP numbers for Weave network nodes in CIDR form. (Weave default: 10.32.0.0/12)"
-        )
-
-        # dns-domain
-        weave_router_group.add_argument(
-            "--weave-router-dns-domain",
-            dest="weave_router_dns_domain",
-            env_var='WEAVE_ROUTER_DNS_DOMAIN',
-            help="The name to use for DNS names assigned to containers. If you override the default, be sure to set your container hostnames to match. (Weave default: weave.local)"
         )
 
         # password
@@ -252,6 +311,12 @@ class Installer:
         )
 
 
+    def add_weave_scope_arguments(self):
+        # TODO: Add some options here
+        # weave_scope_group = self.parser.add_argument_group('weave-scope', 'Weave Scope')
+        pass
+
+
     def is_valid_mesos_flavor(self, name):
         if name == Installer.FLAVOR_VANILLA:
             return True
@@ -325,8 +390,8 @@ class Installer:
         self.weave_tmp_dir = self.args.weave_install_dir + "/tmp"
 
         # Append "." to DNS domain, if it's not already there
-        if not self.args.weave_router_dns_domain is None and not self.args.weave_router_dns_domain.endswith("."):
-            self.args.weave_router_dns_domain += "."
+        if not self.args.domain is None and not self.args.domain.endswith("."):
+            self.args.domain += "."
 
         # Map skip-warnings string to boolean
         self.skip_warnings = is_truthy(self.args.skip_warnings)
@@ -334,6 +399,7 @@ class Installer:
         # Build the Weave systemd service file substitution maps
         self.build_weave_router_substitutions()
         self.build_weave_proxy_substitutions()
+        self.build_weave_scope_substitutions()
 
 
     def build_weave_router_substitutions(self):
@@ -344,7 +410,7 @@ class Installer:
         weave_router_peers = ' '.join(self.mesos_private_slaves + self.mesos_public_slaves)
         self.append_substitution(substitutions, "{{PEERS}}", weave_router_peers)
         self.append_substitution(substitutions, "{{IPALLOC_RANGE}}", self.args.weave_router_ipalloc_range, option="--ipalloc-range")
-        self.append_substitution(substitutions, "{{DNS_DOMAIN}}", self.args.weave_router_dns_domain, option="--dns-domain")
+        self.append_substitution(substitutions, "{{DNS_DOMAIN}}", self.args.domain, option="--dns-domain")
         self.append_substitution(substitutions, "{{PASSWORD}}", self.args.weave_router_password, option="--password")
         self.append_substitution(substitutions, "{{NICKNAME}}", self.args.weave_router_nickname, option="--nickname")
         self.append_substitution(substitutions, "{{INIT_PEER_COUNT}}", self.args.weave_router_init_peer_count, option="--init-peer-count")
@@ -367,6 +433,15 @@ class Installer:
         self.append_substitution(substitutions, "{{HOSTNAME_REPLACEMENT}}", self.args.weave_proxy_hostname_replacement, option="--hostname-replacement")
 
         self.weave_proxy_substitutions = substitutions
+
+
+    def build_weave_scope_substitutions(self):
+
+        substitutions = []
+
+        self.append_substitution(substitutions, "{{BIN_DIR}}", self.weave_bin_dir)
+
+        self.weave_scope_substitutions = substitutions
 
 
     def append_substitution(self, substutitions, pattern, value, **kwargs):
@@ -408,51 +483,55 @@ class Installer:
             user="root", group="root"
         )
 
-        # Install Weave services
+        # Define a list to which the install_and_start_service() calls below will add service file names
+        self.service_file_list = ""
+
+        # Install Weave router service
+        if self.args.weave_with_router:
+
+            self.install_and_start_service(slave, "router", substitutions=self.weave_router_substitutions)
+
+            # Install weave proxy socket into Mesos slave
+            # TODO: See issue: https://github.com/TrentBrown/weave-into-mesos/issues/1
+            key = "DOCKER_HOST"
+            value = "unix://" + self.args.weave_proxy_socket
+            self.add_property_to_remote_json_file(
+                slave,
+                self.args.mesos_slave_executor_env_file,
+                key, value,
+                mode=0644,
+                user="root", group="root"
+            )
+
+
+        # Install Weave proxy service
+        if self.args.weave_with_proxy:
+            self.install_and_start_service(slave, "proxy", substitutions=self.weave_proxy_substitutions)
+
+        # Install Weave scope service
+        if self.args.weave_with_scope:
+
+            # Install executable
+            self.copy_file_local_to_remote(
+                slave,
+                "./weave-scope",
+                self.weave_bin_dir + "/",
+                mode=0755,
+                user="root", group="root"
+            )
+
+            self.install_and_start_service(slave, "scope", substitutions=self.weave_scope_substitutions)
+
+        # Install Weave service target file
+        target_substitutions = []
+        self.append_substitution(target_substitutions, "{{SERVICE_FILE_LIST}}", self.service_file_list)
         self.copy_file_local_to_remote(
             slave,
             "./weave.target",
             "/etc/systemd/system/",
             mode=0644,
-            user="root", group="root"
-        )
-        self.copy_file_local_to_remote(
-            slave,
-            "./weave-router.service",
-            "/etc/systemd/system/",
-            mode=0644,
             user="root", group="root",
-            substitutions=self.weave_router_substitutions
-        )
-        self.copy_file_local_to_remote(
-            slave,
-            "./weave-proxy.service",
-            "/etc/systemd/system/",
-            mode=0644,
-            user="root", group="root",
-            substitutions=self.weave_proxy_substitutions
-        )
-
-        # Enable Weave services, so they'll start at boot
-        self.execute_remotely(slave, "sudo systemctl enable weave-router.service")
-        self.execute_remotely(slave, "sudo systemctl enable weave-proxy.service")
-
-        # Start (or restart) Weave services
-        self.execute_remotely(slave, "sudo systemctl stop weave-router.service")
-        self.execute_remotely(slave, "sudo systemctl start weave-router.service")
-        self.execute_remotely(slave, "sudo systemctl stop weave-proxy.service")
-        self.execute_remotely(slave, "sudo systemctl start weave-proxy.service")
-
-        # Install weave proxy socket into Mesos slave
-        # TODO: See issue: https://github.com/TrentBrown/weave-into-mesos/issues/1
-        key = "DOCKER_HOST"
-        value = "unix://" + self.args.weave_proxy_socket
-        self.add_property_to_remote_json_file(
-            slave,
-            self.args.mesos_slave_executor_env_file,
-            key, value,
-            mode=0644,
-            user="root", group="root"
+            substitutions=target_substitutions
         )
 
         # Restart the Mesos slave so it picks up the new configuration
@@ -467,6 +546,33 @@ class Installer:
         self.execute_remotely(slave, "sudo systemctl daemon-reload")
         self.execute_remotely(slave, "sudo systemctl stop " + service_name)
         self.execute_remotely(slave, "sudo systemctl start " + service_name)
+
+
+    def install_and_start_service(self, slave, name, substitutions=None):
+
+        service_filename = "weave-" + name + ".service"
+
+        # Install service file
+        self.copy_file_local_to_remote(
+            slave,
+            "./" + service_filename,
+            "/etc/systemd/system/",
+            mode=0644,
+            user="root", group="root",
+            substitutions=substitutions
+        )
+
+        # Enable service, so it will start at boot
+        self.execute_remotely(slave, "sudo systemctl enable " + service_filename)
+
+        # Start (or restart) Weave services
+        self.execute_remotely(slave, "sudo systemctl stop {0} || echo {0} not running".format(service_filename))
+        self.execute_remotely(slave, "sudo systemctl start " + service_filename)
+
+        # Append to the service file list
+        if len(self.service_file_list) != 0:
+            self.service_file_list += " "
+        self.service_file_list += service_filename
 
 
     # Helpers -----------------------------------------------
