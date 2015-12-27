@@ -64,7 +64,7 @@ The last section below has the current output of this command.
 
 
 ```
-usage: install.py [-h] [--local-tmp-dir LOCAL_TMP_DIR]
+usage: install.py [-h] [--domain DOMAIN] [--local-tmp-dir LOCAL_TMP_DIR]
                   [--skip-warnings SKIP_WARNINGS]
                   [--mesos-flavor {vanilla,dcos}]
                   [--mesos-public-slaves MESOS_PUBLIC_SLAVES]
@@ -74,8 +74,10 @@ usage: install.py [-h] [--local-tmp-dir LOCAL_TMP_DIR]
                   [--mesos-slave-service-name-private MESOS_SLAVE_SERVICE_NAME_PRIVATE]
                   [--mesos-slave-executor-env-file MESOS_SLAVE_EXECUTOR_ENV_FILE]
                   [--weave-install-dir WEAVE_INSTALL_DIR]
+                  [--weave-with-router] [--weave-without-router]
+                  [--weave-with-proxy] [--weave-without-proxy]
+                  [--weave-with-scope] [--weave-without-scope]
                   [--weave-router-ipalloc-range WEAVE_ROUTER_IPALLOC_RANGE]
-                  [--weave-router-dns-domain WEAVE_ROUTER_DNS_DOMAIN]
                   [--weave-router-password WEAVE_ROUTER_PASSWORD]
                   [--weave-router-nickname WEAVE_ROUTER_NICKNAME]
                   [--weave-router-init-peer-count WEAVE_ROUTER_INIT_PEER_COUNT]
@@ -91,6 +93,10 @@ defaults.
 
 optional arguments:
   -h, --help            show this help message and exit
+  --domain DOMAIN       The name to use for DNS names assigned to containers.
+                        If you override the default, be sure to set your
+                        container hostnames to match. (Weave default:
+                        weave.local) [env var: WIM_DOMAIN]
   --local-tmp-dir LOCAL_TMP_DIR
                         Path for a local temporary directory. (default:
                         '/tmp') [env var: WIM_TMP_DIR]
@@ -134,10 +140,21 @@ weave:
   Weave
 
   --weave-install-dir WEAVE_INSTALL_DIR
-                        The directory in which to install Weave. Must be on a
-                        writable volume. (default:
+                        The directory in which to install Weave. (default:
                         /home/<mesos_admin_username>) [env var:
                         WEAVE_INSTALL_DIR]
+  --weave-with-router   Install the Weave router. [env var: WEAVE_WITH_ROUTER]
+  --weave-without-router
+                        Do not install the Weave router. [env var:
+                        WEAVE_WITHOUT_ROUTER]
+  --weave-with-proxy    Install the Weave proxy. [env var: WEAVE_WITH_PROXY]
+  --weave-without-proxy
+                        Do not install the Weave proxy. [env var:
+                        WEAVE_WITHOUT_PROXY]
+  --weave-with-scope    Install the Weave scope. [env var: WEAVE_WITH_SCOPE]
+  --weave-without-scope
+                        Do not install the Weave scope. [env var:
+                        WEAVE_WITHOUT_SCOPE]
 
 weave-router:
   Weave Router
@@ -146,11 +163,6 @@ weave-router:
                         The range of IP numbers for Weave network nodes in
                         CIDR form. (Weave default: 10.32.0.0/12) [env var:
                         WEAVE_ROUTER_IPALLOC_RANGE]
-  --weave-router-dns-domain WEAVE_ROUTER_DNS_DOMAIN
-                        The name to use for DNS names assigned to containers.
-                        If you override the default, be sure to set your
-                        container hostnames to match. (Weave default:
-                        weave.local) [env var: WEAVE_ROUTER_DNS_DOMAIN]
   --weave-router-password WEAVE_ROUTER_PASSWORD
                         Router password [env var: WEAVE_ROUTER_PASSWORD]
   --weave-router-nickname WEAVE_ROUTER_NICKNAME
